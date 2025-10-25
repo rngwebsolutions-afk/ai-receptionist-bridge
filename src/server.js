@@ -7,16 +7,15 @@ dotenv.config();
 
 import express from "express";
 import WebSocket, { WebSocketServer } from "ws";
-import { decode } from "mulaw-js";
-import convert from "pcm-convert";
+import { twilioMuLawToPCM16 } from "./audioUtils.js"; // ← use local decoder
 
 const app = express();
 app.use(express.json());
 
 // =============== CONFIG ==================
 const PORT = process.env.PORT || 3000;
-const ELEVEN_AGENT_ID = process.env.ELEVEN_AGENT_ID;        // e.g. agent_0401k81ckaqsfexr0xx53dghwffw
-const ELEVEN_API_KEY = process.env.ELEVENLABS_API_KEY;      // private key
+const ELEVEN_AGENT_ID = process.env.ELEVENLABS_AGENT_ID;   // ← match Render env
+const ELEVEN_API_KEY = process.env.ELEVENLABS_API_KEY;
 // =========================================
 
 app.get("/", (_, res) => res.send("🤖 AI receptionist (ElevenLabs only) is online!"));
@@ -41,10 +40,7 @@ server.on("upgrade", (req, socket, head) => {
 // Twilio sends μ-law @8 kHz; ElevenLabs expects PCM16 @16 kHz
 function twilioToPcm16(base64) {
   try {
-    const mulawBuffer = Buffer.from(base64, "base64");
-    const pcm8 = decode(mulawBuffer);
-    const pcm16 = convert(pcm8, { fromRate: 8000, toRate: 16000 });
-    return pcm16;
+    return twilioMuLawToPCM16(base64); // Int16Array @16kHz
   } catch (err) {
     console.error("Audio conversion error:", err.message);
     return null;
@@ -61,15 +57,12 @@ wss.on("connection", (twilioSocket) => {
 
   // Connect to ElevenLabs Agent Realtime API
   console.log("🧠 Connecting to ElevenLabs Agent Realtime API...");
-  elevenSocket = new WebSocket(
-    `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${ELEVEN_AGENT_ID}`,
-    { headers: { "xi-api-key": ELEVEN_API_KEY } }
-  );
+  const elUrl = `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${ELEVEN_AGENT_ID}`;
+  elevenSocket = new WebSocket(elUrl, { headers: { "xi-api-key": ELEVEN_API_KEY } });
 
   // When ElevenLabs connection opens
   elevenSocket.on("open", () => {
     console.log("🧠 Connected to ElevenLabs Agent Realtime API");
-    // Give EL a few moments to send init metadata before streaming audio
     setTimeout(() => {
       if (!elReady) console.warn("⚠️ ElevenLabs still not ready after short delay");
     }, 1500);
@@ -96,14 +89,20 @@ wss.on("connection", (twilioSocket) => {
       // === Audio out from ElevenLabs (agent speaking) ===
       if (data.agent_output_audio_chunk) {
         const audioB64 = data.agent_output_audio_chunk.audio_chunk;
-        // Forward this audio back to Twilio as a media message
+
+        // ⚠️ NOTE: Twilio Media Streams are one-way (from call → your server).
+        // Sending "media" back over the same WebSocket is ignored by Twilio.
+        // To play audio to the caller, you must use TwiML <Play>/<Say> or a
+        // bidirectional media path (not supported by classic Media Streams).
+        // We keep this here only for “local monitoring” or if your infra
+        // supports bidirectional media via a different mechanism.
         twilioSocket.send(
           JSON.stringify({
             event: "media",
             media: { payload: audioB64 },
           })
         );
-        console.log("🎧 Forwarded agent audio chunk to Twilio");
+        console.log("🎧 Received agent audio chunk (sent to Twilio socket for monitoring)");
       }
 
       // === End of speech ===
@@ -172,4 +171,3 @@ wss.on("connection", (twilioSocket) => {
 
   twilioSocket.on("error", (err) => console.error("❌ Twilio socket error:", err));
 });
-

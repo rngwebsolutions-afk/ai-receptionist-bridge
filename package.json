@@ -2,16 +2,16 @@
   "name": "ai-receptionist-bridge",
   "version": "1.0.0",
   "type": "module",
-  "engines": {
-    "node": "20.x"
-  },
+  "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js"
   },
   "dependencies": {
+    "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "ws": "^8.18.0",
-    "node-fetch": "^3.3.2",
-    "pcm-convert": "^2.1.1"
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

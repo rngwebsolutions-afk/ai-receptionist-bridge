@@ -10,8 +10,9 @@ import convert from "pcm-convert";
 
 dotenv.config();
 
-const app = express();
-app.use(express.json());
+app.get("/", (_, res) => {
+  res.send("🤖 AI Receptionist Bridge is running on Render!");
+});
 
 // ====== CONFIG ======
 const PORT = process.env.PORT || 10000;
@@ -109,7 +110,13 @@ wss.on("connection", (twilioSocket) => {
 
   // Handle Twilio media events
   twilioSocket.on("message", (msg) => {
-    const data = JSON.parse(msg.toString());
+    let data;
+    try {
+      data = JSON.parse(msg.toString());
+    } catch (err) {
+      console.error("❌ Failed to parse Twilio message:", err);
+      return;
+    }
 
     if (data.event === "start") {
       console.log(`▶️ Twilio stream started: ${data.start.streamSid}`);

@@ -10,10 +10,9 @@ import convert from "pcm-convert";
 
 dotenv.config();
 
-const app = express();
-app.set("trust proxy", true);
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.get("/", (_, res) => {
+  res.send("🤖 AI Receptionist Bridge is running on Render!");
+});
 
 // ====== CONFIG ======
 const PORT = process.env.PORT || 10000;
@@ -23,42 +22,6 @@ const ELEVEN_API_KEY = process.env.ELEVENLABS_API_KEY;
 
 app.get("/", (_, res) => {
   res.send("🤖 AI Receptionist Bridge is running on Render!");
-});
-
-// ============================
-// Twilio <Stream> TwiML Route
-// ============================
-app.post("/twiml", (req, res) => {
-  const forwardedProto = req.headers["x-forwarded-proto"];
-  const forwardedHost = req.headers["x-forwarded-host"];
-
-  const proto = forwardedProto
-    ? forwardedProto.toString().split(",")[0].trim()
-    : (req.secure ? "https" : req.protocol || "http");
-  const hostHeader = forwardedHost || req.headers.host;
-  const host = hostHeader ? hostHeader.toString().split(",")[0].trim() : "";
-
-  if (!host) {
-    console.error("❌ Unable to determine host header for TwiML response");
-    return res.status(500).send("Missing host header");
-  }
-
-  const wsScheme = proto === "http" ? "ws" : "wss";
-  const streamUrl = `${wsScheme}://${host}/stream`;
-  console.log(`📡 Sending TwiML response for stream: ${streamUrl}`);
-
-  const twiml = [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<Response>',
-    '  <Say>Connecting you to your AI receptionist. Please hold.</Say>',
-    '  <Connect>',
-    `    <Stream url="${streamUrl}" />`,
-    '  </Connect>',
-    '</Response>',
-  ].join("\n");
-
-  res.type("text/xml");
-  res.send(twiml);
 });
 
 // Create HTTP server and WebSocket endpoint for Twilio
@@ -73,8 +36,6 @@ server.on("upgrade", (req, socket, head) => {
     wss.handleUpgrade(req, socket, head, (ws) => {
       wss.emit("connection", ws, req);
     });
-  } else {
-    socket.destroy();
   }
 });
 
@@ -100,12 +61,6 @@ wss.on("connection", (twilioSocket) => {
   let twilioBuffer = [];
 
   // Connect to ElevenLabs Realtime API
-  if (!ELEVEN_AGENT_ID || !ELEVEN_API_KEY) {
-    console.error("❌ Missing ELEVENLABS_AGENT_ID or ELEVENLABS_API_KEY environment variables");
-    twilioSocket.close(1011, "Server misconfigured");
-    return;
-  }
-
   console.log("🧠 Connecting to ElevenLabs Agent API...");
   elevenSocket = new WebSocket(
     `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${ELEVEN_AGENT_ID}`,

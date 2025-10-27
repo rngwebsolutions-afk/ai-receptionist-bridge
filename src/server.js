@@ -2,6 +2,7 @@
 // AI Receptionist Bridge (Render + Twilio + ElevenLabs)
 // ==============================
 
+// Import dependencies
 import express from "express";
 import WebSocket, { WebSocketServer } from "ws";
 import dotenv from "dotenv";
@@ -147,12 +148,9 @@ wss.on("connection", (twilioSocket) => {
     }
   });
 
-  twilioSocket.on("close", () => {
-    console.log("❌ Twilio WebSocket closed");
-    if (elevenSocket && elevenSocket.readyState === WebSocket.OPEN) {
-      elevenSocket.close();
-    }
-  });
+// WebSocket setup
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
 
   twilioSocket.on("error", (err) => {
     console.error("❌ Twilio socket error:", err.message);
